@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Product Expiry Notifier</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      text-align: center;
+    }
+
+    h1 {
+      margin-top: 20px;
+    }
+
+    .form-container, .product-list, #camera-container {
+      margin: 20px auto;
+      max-width: 400px;
+      text-align: left;
+    }
+
+    input, button {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      font-size: 16px;
+    }
+
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    video, canvas {
+      width: 100%;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    .product-list table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .product-list table, th, td {
+      border: 1px solid #ddd;
+    }
+
+    th, td {
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f2f2f2;
+    }
+
+    .expired {
+      background-color: #ffcccc;
+    }
+
+    .warning {
+      background-color: #fff3cd;
+    }
+
+    /* Popup Notification Styling */
+    .popup {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background-color: #333;
+      color: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2);
+      z-index: 1000;
+      display: none;
+      animation: fadeIn 0.5s, fadeOut 0.5s 4.5s;
+    }
+
+    .popup.show {
+      display: block;
+    }
+
+    .popup-header {
+      font-weight: bold;
+      font-size: 16px;
+    }
+
+    .popup-body {
+      margin-top: 5px;
+      font-size: 14px;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeOut {
+      from {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Product Expiry Notifier</h1>
+
+  <div class="form-container">
+    <form id="product-form">
+      <label for="expiry-date">Select Expiry Date:</label>
+      <input type="date" id="expiry-date" required>
+
+      <label for="photo-button">Take Product Photo:</label>
+      <button type="button" id="photo-button">Capture Photo</button>
+
+      <input type="submit" value="Save Product">
+    </form>
+  </div>
+
+  <div id="camera-container" style="display: none;">
+    <video id="video" autoplay></video>
+    <canvas id="canvas" style="display: none;"></canvas>
+    <button id="toggle-camera">Switch Camera</button>
+    <button id="capture-button">Take Photo</button>
+    <button id="save-button" style="display: none;">Use Photo</button>
+  </div>
+
+  <div class="product-list">
+    <h2>Product List</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Product Photo</th>
+          <th>Days Left</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="product-list">
+        <!-- Products will be dynamically added here -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Popup Notification -->
+  <div id="popup" class="popup">
+    <div class="popup-header">Notification</div>
+    <div class="popup-body"></div>
+  </div>
+
+  <script>
+    const productForm = document.getElementById('product-form');
+    const photoButton = document.getElementById('photo-button');
+    const toggleCameraButton = document.getElementById('toggle-camera');
+    const cameraContainer = document.getElementById('camera-container');
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const captureButton = document.getElementById('capture-button');
+    const saveButton = document.getElementById('save-button');
+    const expiryDateInput = document.getElementById('expiry-date');
+    const productList = document.getElementById('product-list');
+    const popup = document.getElementById('popup');
+    const products = [];
+
+    let photoData = null; // To store captured photo temporarily
+    let currentFacingMode = 'environment'; // Default to back camera
+
+    // Show camera when "Capture Photo" is clicked
+    photoButton.addEventListener('click', () => {
+      photoData = null; // Reset photoData for a new photo
+      canvas.style.display = 'none'; // Hide previous photo
+      video.style.display = 'block'; // Show the video stream
+      captureButton.style.display = 'block'; // Show the capture button
+      saveButton.style.display = 'none'; // Hide the save button
+
+      cameraContainer.style.display = 'block';
+      startCamera();
+    });
+
+    // Start the camera with the current facing mode
+    function startCamera() {
+      navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: currentFacingMode } }
+      })
+      .then(stream => {
+        video.srcObject = stream;
+      })
+      .catch(error => {
+        console.error('Error accessing camera:', error);
+        alert('Unable to access your camera. Please check your device settings.');
+      });
+    }
+
+    // Toggle camera between front and back
+    toggleCameraButton.addEventListener('click', () => {
+      currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+      startCamera();
+    });
+
+    // Capture photo from the video stream
+    captureButton.addEventListener('click', () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      photoData = canvas.toDataURL('image/png'); // Store photo as Base64 data temporarily
+      canvas.style.display = 'block'; // Show the captured photo
+      video.style.display = 'none'; // Hide the video stream
+      captureButton.style.display = 'none'; // Hide the capture button
+      saveButton.style.display = 'block'; // Show the save button
+    });
+
+    // Use the captured photo and return to form
+    saveButton.addEventListener('click', () => {
+      cameraContainer.style.display = 'none'; // Hide the camera container
+      alert('Photo captured successfully!');
+    });
+
+    // Handle form submission
+    productForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const expiryDate = expiryDateInput.value;
+
+      if (!photoData) {
+        alert('Please take a photo of the product.');
+        return;
+      }
+
+      if (!expiryDate) {
+        alert('Please select an expiry date.');
+        return;
+      }
+
+      // Save product details
+      const product = {
+        photo: photoData, // Independent copy of the current photo
+        expiryDate: expiryDate,
+      };
+      products.push(product); // Add product to the list
+
+      // Reset photoData for the next product
+      photoData = null;
+
+      // Update product list
+      updateProductList();
+
+      // Reset form
+      productForm.reset();
+    });
+
+    // Show popup notification with exact days left
+    function showPopup(message) {
+      const popupBody = popup.querySelector('.popup-body');
+      popupBody.textContent = message;
+      popup.classList.add('show');
+      setTimeout(() => {
+        popup.classList.remove('show');
+      }, 5000); // Hide popup after 5 seconds
+    }
+
+    // Update the product list and show notification with exact days left
+    function updateProductList() {
+      productList.innerHTML = '';
+      const today = new Date();
+
+      products.forEach((product, index) => {
+        const expiryDate = new Date(product.expiryDate);
+        const timeDiff = expiryDate - today;
+        const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+        const row = document.createElement('tr');
+        row.className = daysLeft < 0 ? 'expired' : daysLeft <= 3 ? 'warning' : '';
+
+        // Add product photo
+        const photoCell = document.createElement('td');
+        const img = document.createElement('img');
+        img.src = product.photo;
+        img.alt = 'Product Photo';
+        img.width = 50;
+        img.height = 50;
+        photoCell.appendChild(img);
+        row.appendChild(photoCell);
+
+        // Add days left
+        const daysCell = document.createElement('td');
+        daysCell.textContent = `${daysLeft} days`;
+        row.appendChild(daysCell);
+
+        // Add actions
+        const actionCell = document.createElement('td');
+        const deleteButton = document.createElement('button');
+        deleteButton.textContent = 'Delete';
+        deleteButton.addEventListener('click', () => {
+          products.splice(index, 1);
+          updateProductList();
+          showPopup('Product deleted successfully.');
+        });
+        actionCell.appendChild(deleteButton);
+        row.appendChild(actionCell);
+
+        productList.appendChild(row);
+
+        // Show notification if the product is about to expire in a specific number of days or has expired
+        if (daysLeft <= 3 && daysLeft > 0) {
+          showPopup(`A product will expire in ${daysLeft} days!`);
+        } else if (daysLeft < 0) {
+          showPopup('A product has expired!');
+        }
+      });
+    }
+
+    // Initial call to update the product list (in case there are already products saved)
+    updateProductList();
+  </script>
+</body>
+</html>
